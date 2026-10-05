@@ -31,13 +31,19 @@
 <div class="banner" id="banner" hidden></div>
 
 <div class="toolbar">
+  <div class="viewtoggle" id="viewToggle" role="group" aria-label="Switch view">
+    <button class="vbtn active" type="button" data-view="tables">Tables</button>
+    <button class="vbtn" type="button" data-view="tree">Tree</button>
+  </div>
   <label class="onlydiff"><input type="checkbox" id="onlyDiff" checked> Only show differences</label>
+  <input type="search" class="search" id="tableSearch" placeholder="Filter tables by name&hellip;">
   <button class="btn" id="clearBtn">Clear</button>
   <span class="hint">100% local &middot; files never leave this machine</span>
 </div>
 
 <main class="main">
-  <div class="tree" id="tree"></div>
+  <div class="tables" id="tables"></div>
+  <div class="tree" id="tree" hidden></div>
   <aside class="panel" id="panel" hidden>
     <div class="panel-head">
       <div class="panel-title" id="panelTitle"></div>

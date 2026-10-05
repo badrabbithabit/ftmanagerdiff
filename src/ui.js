@@ -8,7 +8,11 @@
     base: null, comp: null,
     onlyDiff: true,
     tablePaths: new Set(), tcache: new Map(),
-    selected: null, tab: 'base', error: null
+    selected: null, tab: 'base', error: null,
+    view: 'tables',            // 'tables' (default) | 'tree'
+    rows: [],                  // tables-view data model (C.summarizeTables)
+    sortKey: 'changedCells', sortDir: 'desc',
+    search: ''
   };
 
   /* ---------------- formatting helpers ---------------- */
@@ -177,11 +181,165 @@
     parentUl.appendChild(li);
   }
 
+  /* ---------------- tables view ---------------- */
+
+  const TVIEW_COLS = [
+    ['path', 'Table'],
+    ['status', 'Status'],
+    ['dims', 'Dims'],
+    ['changedCells', 'Cells'],
+    ['pctChanged', '% changed'],
+    ['minDelta', 'Min \u0394'],
+    ['maxDelta', 'Max \u0394'],
+    ['meanAbsDelta', 'Avg |\u0394|']
+  ];
+
+  // Default (Cells) ordering mirrors core summarizeTables: status rank first,
+  // then changedCells, then maxAbsDelta.
+  const STATUS_RANK = { changed: 0, resized: 1, 'only-in-base': 2, 'only-in-comp': 2, equal: 3 };
+
+  function sortVal(r, key) {
+    switch (key) {
+      case 'path': return r.path;
+      case 'status': return r.status;
+      case 'dims': return r.dimsBase ? r.dimsBase[0] * 100000 + r.dimsBase[1] : -1;
+      case 'pctChanged': return (r.changedCells !== null && r.totalCells) ? r.changedCells / r.totalCells : null;
+      default: return r[key];
+    }
+  }
+
+  function sortRows(rows) {
+    const dir = state.sortDir === 'asc' ? 1 : -1;
+    if (state.sortKey === 'changedCells') {
+      return rows.sort((x, y) => {
+        const rx = STATUS_RANK[x.status] === undefined ? 4 : STATUS_RANK[x.status];
+        const ry = STATUS_RANK[y.status] === undefined ? 4 : STATUS_RANK[y.status];
+        if (rx !== ry) return rx - ry;
+        const a = x.changedCells === null ? -1 : x.changedCells;
+        const b = y.changedCells === null ? -1 : y.changedCells;
+        if (a !== b) return dir * (b - a);
+        const ax = x.maxAbsDelta === null ? -1 : x.maxAbsDelta;
+        const ay = y.maxAbsDelta === null ? -1 : y.maxAbsDelta;
+        return dir * (ay - ax);
+      });
+    }
+    return rows.sort((x, y) => {
+      const a = sortVal(x, state.sortKey), b = sortVal(y, state.sortKey);
+      const an = a === null || a === undefined, bn = b === null || b === undefined;
+      if (an && bn) return x.path < y.path ? -1 : 1;
+      if (an) return 1;                       // N/A rows always last, either direction
+      if (bn) return -1;
+      if (typeof a === 'string') return dir * (a < b ? -1 : a > b ? 1 : 0);
+      return dir * (a - b);
+    });
+  }
+
+  function dimsText(r) {
+    const d = a => a ? a.join('\u00D7') : '\u2014';
+    if (r.dimsComp && r.dimsBase && (r.dimsComp[0] !== r.dimsBase[0] || r.dimsComp[1] !== r.dimsBase[1]))
+      return d(r.dimsBase) + ' \u2192 ' + d(r.dimsComp);
+    return d(r.dimsBase || r.dimsComp);
+  }
+
+  function renderTables() {
+    const host = $('tables');
+    host.textContent = '';
+    if (!state.base) {
+      host.appendChild(el('div', 'empty', 'No base map loaded.'));
+      return;
+    }
+
+    let list = state.rows;
+    if (state.onlyDiff && state.comp) list = list.filter(r => r.status !== 'equal');
+    const q = state.search.trim().toLowerCase();
+    if (q) list = list.filter(r => r.path.toLowerCase().includes(q));
+    list = sortRows(list.slice());
+
+    // global |delta| max drives the diverging color intensity, like the grid
+    let gmax = 0;
+    state.rows.forEach(r => { if (Number.isFinite(r.maxAbsDelta) && r.maxAbsDelta > gmax) gmax = r.maxAbsDelta; });
+
+    const tbl = el('table', 'tview');
+    const thead = el('thead');
+    const htr = el('tr');
+    for (const [key, label] of TVIEW_COLS) {
+      const active = state.sortKey === key;
+      const th = el('th', 'sortable' + (active ? ' sorted' : ''),
+        label + (active ? (state.sortDir === 'asc' ? ' \u25B2' : ' \u25BC') : ''));
+      th.title = 'Sort by ' + label;
+      th.addEventListener('click', () => {
+        if (state.sortKey === key) state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+        else { state.sortKey = key; state.sortDir = (key === 'path' || key === 'status') ? 'asc' : 'desc'; }
+        renderTables();
+      });
+      htr.appendChild(th);
+    }
+    thead.appendChild(htr);
+    tbl.appendChild(thead);
+
+    const tbody = el('tbody');
+    for (const r of list) {
+      const tr = el('tr');
+      tr.dataset.pk = r.path;
+      if (state.selected && state.selected.kind === 'table' && state.selected.pk === r.path) tr.className = 'selected';
+
+      const tdName = el('td', 'tname', r.path);
+      tdName.title = r.path;
+      tr.appendChild(tdName);
+
+      const tdSt = el('td');
+      const badge = el('span', 'sbadge s-' + r.status, r.status);
+      if (r.status === 'changed' && Number.isFinite(r.maxAbsDelta)) {
+        const sign = Math.abs(r.maxDelta || 0) >= Math.abs(r.minDelta || 0) ? 1 : -1;
+        const bg = deltaColor(sign * r.maxAbsDelta, gmax); // hue = dominant direction, intensity vs global max
+        if (bg) badge.style.backgroundColor = bg;
+      }
+      tdSt.appendChild(badge);
+      tr.appendChild(tdSt);
+
+      tr.appendChild(el('td', 'tdims', dimsText(r)));
+      const tdCells = el('td', 'tcells',
+        r.changedCells === null ? '\u2014' : r.changedCells + '/' + r.totalCells);
+      if (r.changedCells !== null && r.diff && (r.diff.partialOverlap || !r.diff.sameSize)) {
+        tdCells.textContent += ' overlap';
+        const or = Math.min(r.dimsBase[0], r.dimsComp[0]), oc = Math.min(r.dimsBase[1], r.dimsComp[1]);
+        tdCells.title = 'changed cells over the ' + or + '\u00D7' + oc + ' overlap';
+      }
+      tr.appendChild(tdCells);
+      const pct = (r.changedCells !== null && r.totalCells) ? r.changedCells / r.totalCells : null;
+      const tdPct = el('td', 'tnum', pct === null ? '\u2014' : String(Number((pct * 100).toPrecision(3))) + '%');
+      if (pct !== null && r.diff && (r.diff.partialOverlap || !r.diff.sameSize))
+        tdPct.title = 'share of the overlapping subgrid that changed';
+      tr.appendChild(tdPct);
+      for (const key of ['minDelta', 'maxDelta', 'meanAbsDelta']) {
+        const v = r[key];
+        const td = el('td', 'tnum', Number.isFinite(v) ? fmt(v) : '\u2014');
+        if (!Number.isFinite(v)) {
+          if (r.status === 'resized') td.title = 'dimensions differ \u2014 delta unavailable';
+          else if (r.status === 'only-in-base' || r.status === 'only-in-comp') td.title = 'table missing on one side';
+          else if (r.changedCells > 0) td.title = 'no finite deltas (NaN-vs-value changes only)';
+        }
+        if (Number.isFinite(v) && v !== 0) {
+          const bg = deltaColor(v, gmax); // sign of the value picks red/blue, |v|/gmax the intensity
+          if (bg) td.style.backgroundColor = bg;
+        }
+        tr.appendChild(td);
+      }
+
+      tr.addEventListener('click', () => openTable(r.path));
+      tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody);
+    host.appendChild(tbl);
+    if (!list.length) host.appendChild(el('div', 'empty', 'No tables match the current filter.'));
+  }
+
   /* ---------------- panel ---------------- */
 
   function selectRow(pk) {
     document.querySelectorAll('.selected').forEach(n => n.classList.remove('selected'));
-    const node = document.querySelector('[data-pk="' + (window.CSS && CSS.escape ? CSS.escape(pk) : pk) + '"]');
+    let node = null;
+    document.querySelectorAll('[data-pk]').forEach(n => { if (!node && n.dataset.pk === pk) node = n; });
     if (node) node.classList.add('selected');
   }
 
@@ -315,6 +473,9 @@
     state.tcache = new Map();
     state.tablePaths = new Set();
     [state.base, state.comp].forEach(f => { if (f) f.tmap.forEach((t, pk) => state.tablePaths.add(pk)); });
+    state.rows = state.base
+      ? C.summarizeTables(state.base.tables, state.comp ? state.comp.tables : null)
+      : [];
 
     for (const [slot, fileId, metaId, badgeId] of [['base', 'baseFile', 'baseMeta', 'baseBadge'],
       ['comp', 'compFile', 'compMeta', 'compBadge']]) {
@@ -348,6 +509,7 @@
 
     const tree = $('tree');
     tree.textContent = '';
+    renderTables();
     if (!state.base) {
       tree.appendChild(el('div', 'empty', 'No base map loaded.'));
       $('summary').textContent = 'Load a Base map to start';
@@ -393,6 +555,18 @@
 
   wireSlot('base', 'slotBase', 'baseInput');
   wireSlot('comp', 'slotComp', 'compInput');
+
+  function applyView() {
+    $('tree').hidden = state.view !== 'tree';
+    $('tables').hidden = state.view !== 'tables';
+    $('tableSearch').hidden = state.view !== 'tables';
+    document.querySelectorAll('#viewToggle .vbtn').forEach(b =>
+      b.classList.toggle('active', b.dataset.view === state.view));
+  }
+  document.querySelectorAll('#viewToggle .vbtn').forEach(b =>
+    b.addEventListener('click', () => { state.view = b.dataset.view; applyView(); }));
+  $('tableSearch').addEventListener('input', e => { state.search = e.target.value; renderTables(); });
+  applyView();
 
   $('onlyDiff').addEventListener('change', e => { state.onlyDiff = e.target.checked; render(); });
   $('clearBtn').addEventListener('click', () => {

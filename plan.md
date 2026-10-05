@@ -68,6 +68,23 @@ TuneCompare.com is dead.
       (10) wired into run-all → 30 tests, 3 suites, all green.
 - [ ] 4d. Eyeball the UI in a real browser with the samples (user).
 
+## Phase 5 — Enhancements
+- [x] 5a. Tables-first summary view: flat list of all tables with per-table
+      delta stats (changed cells, min/max/avg delta, dims, status), sortable,
+      searchable; click → existing Base/Compare/Difference panel. Tree view
+      becomes a toggle. Core: diffTable now always returns full stats
+      (totalCells, min/max/maxAbs/meanAbsDelta, dimsBase/dimsComp; dim
+      mismatch = overlap counts, null delta numbers) + summarizeTables()
+      (path-union rows, default most-changed-first). QA: qa/table-view.test.js
+      on the BMW pair (370 rows: 47 changed / 95 resized / 228 equal, top row
+      InjTables/Inj_MainTps_A_Table 23×13→24×15 299/299 overlap cells).
+- [x] 5b. QA pass on 5a: reviewer found resized-rows-dominant sort, misleading
+      overlap counts, NaN-only stats showing 0, path-collision drop, CSS.escape
+      fallback — all fixed. Default sort now status-aware (changed → resized →
+      only-in-* → equal); resized tables with matching overlap axes get real
+      delta stats (16/95 in BMW pair, rest honestly '—'); new '% changed'
+      sortable column + honesty tooltips. 4 suites / 42 tests green.
+
 ## Decisions log
 - Local single-page web app (TuneCompare replacement UX), dependency-free,
   fully offline. Core is a UMD lib so node tests exercise the same code path.

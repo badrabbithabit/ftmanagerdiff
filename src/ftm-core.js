@@ -9,6 +9,11 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
+  // Tree-leaf numeric tolerance. NOTE: table CELLS are compared EXACTLY
+  // (x !== y, NaN-aware) in diffTable/summarizeTables — no tolerance — while
+  // tree leaves use NUM_TOL below. A 0.0005 table-cell wobble counts as a
+  // changed cell but not as a tree change; this is deliberate (cells are
+  // stored as exact doubles) but worth knowing when the two views disagree.
   const NUM_TOL = 0.001;
 
   /* ------------------------------------------------------------------ *
@@ -449,46 +454,221 @@
 
   /**
    * Positional cell diff of two extracted tables: delta = base - comp.
-   * Returns { sameSize:false, reason } when dimensions differ.
-   * NaN cells (missing in the sparse dict) stay NaN; NaN-vs-value counts
-   * as changed, NaN-vs-NaN does not.
+   * Always returns the full stats shape:
+   *   { sameSize, deltaMatrix, changedCells, totalCells,
+   *     minDelta, maxDelta, maxAbsDelta, meanAbsDelta,
+   *     dimsBase, dimsComp, xDelta?, yDelta? }
+   * plus, when dimensions differ, { reason, baseSize, compSize } (kept for
+   * backward compatibility).
+   *
+   * NaN cells (missing in the sparse dict) stay NaN in deltaMatrix;
+   * NaN-vs-value counts as changed, NaN-vs-NaN does not. NaN deltas are
+   * EXCLUDED from the numeric stats (min/max/mean/maxAbs); meanAbsDelta is
+   * the mean of |delta| over changed (finite, non-zero) cells only.
+   *
+   * Dimension mismatch: counts are always reported — dimsBase/dimsComp and
+   * changedCells/totalCells over the overlapping subgrid (min rows x min
+   * cols). Delta numbers over that overlap are reported ONLY when the
+   * overlap axes match (base vs comp xAxes[0..oc) and yAxes[0..or), 1e-9
+   * tolerance, same key-matching style as extractTables); then
+   * partialOverlap is true and deltaMatrix/min/max/mean/maxAbs describe the
+   * overlap subgrid. When the axes differ the delta fields stay null (the
+   * overlapping cells sit at different coordinates — comparing them would
+   * be dishonest).
+   *
+   * When changedCells > 0 but every change is NaN-vs-value (no finite
+   * delta exists), minDelta/maxDelta/maxAbsDelta/meanAbsDelta are null, not
+   * 0, so the UI can show "—". Fully-equal grids report 0 for all four.
    */
   function diffTable(base, comp) {
-    if (!base || !comp) return { sameSize: false, reason: 'table missing on one side' };
-    if (base.rows !== comp.rows || base.cols !== comp.cols) {
+    const dims = t => (t ? [t.rows, t.cols] : null);
+    if (!base || !comp) {
       return {
+        sameSize: false, partialOverlap: false, reason: 'table missing on one side',
+        baseSize: dims(base), compSize: dims(comp),
+        dimsBase: dims(base), dimsComp: dims(comp),
+        deltaMatrix: null, changedCells: null, totalCells: null,
+        minDelta: null, maxDelta: null, maxAbsDelta: null, meanAbsDelta: null
+      };
+    }
+
+    // Exact (no-tolerance) cell diff over a rows x cols subgrid.
+    function gridStats(rows, cols) {
+      const deltaMatrix = [];
+      let changedCells = 0, maxAbsDelta = 0;
+      let minDelta = Infinity, maxDelta = -Infinity, sumAbs = 0, finiteChanged = 0;
+      for (let r = 0; r < rows; r++) {
+        const row = new Array(cols);
+        for (let c = 0; c < cols; c++) {
+          const x = base.matrix[r][c], y = comp.matrix[r][c];
+          const xn = Number.isNaN(x), yn = Number.isNaN(y);
+          if (xn && yn) { row[c] = NaN; continue; }
+          const d = x - y;
+          row[c] = d;
+          if (d !== 0) {
+            changedCells++;
+            if (Number.isFinite(d)) {
+              const ad = Math.abs(d);
+              if (ad > maxAbsDelta) maxAbsDelta = ad;
+              if (d < minDelta) minDelta = d;
+              if (d > maxDelta) maxDelta = d;
+              sumAbs += ad;
+              finiteChanged++;
+            }
+          }
+        }
+        deltaMatrix.push(row);
+      }
+      let min, max, mean, mabs;
+      if (finiteChanged) { min = minDelta; max = maxDelta; mean = sumAbs / finiteChanged; mabs = maxAbsDelta; }
+      else if (changedCells > 0) { min = max = mean = mabs = null; } // NaN-vs-value only
+      else { min = max = mean = mabs = 0; }
+      return { deltaMatrix, changedCells, minDelta: min, maxDelta: max, maxAbsDelta: mabs, meanAbsDelta: mean };
+    }
+
+    if (base.rows !== comp.rows || base.cols !== comp.cols) {
+      const or = Math.min(base.rows, comp.rows), oc = Math.min(base.cols, comp.cols);
+      // Do the overlap axes line up? (1e-9, same style as extractTables key matching)
+      const axesMatch = (u, v, n) => {
+        for (let i = 0; i < n; i++) {
+          const x = u[i], y = v[i];
+          if (Number.isNaN(x) || Number.isNaN(y)) { if (!(Number.isNaN(x) && Number.isNaN(y))) return false; continue; }
+          if (Math.abs(x - y) >= 1e-9) return false;
+        }
+        return true;
+      };
+      const shared = axesMatch(base.xAxes, comp.xAxes, oc) && axesMatch(base.yAxes, comp.yAxes, or);
+      const shell = {
         sameSize: false,
         reason: 'Base and Compare tables are not the same size',
         baseSize: [base.rows, base.cols],
-        compSize: [comp.rows, comp.cols]
+        compSize: [comp.rows, comp.cols],
+        dimsBase: [base.rows, base.cols],
+        dimsComp: [comp.rows, comp.cols],
+        totalCells: or * oc
       };
-    }
-    const deltaMatrix = [];
-    let changedCells = 0, maxAbsDelta = 0;
-    for (let r = 0; r < base.rows; r++) {
-      const row = new Array(base.cols);
-      for (let c = 0; c < base.cols; c++) {
-        const x = base.matrix[r][c], y = comp.matrix[r][c];
-        const xn = Number.isNaN(x), yn = Number.isNaN(y);
-        if (xn && yn) { row[c] = NaN; continue; }
-        const d = x - y;
-        row[c] = d;
-        if (d !== 0) {
-          changedCells++;
-          if (Number.isFinite(d) && Math.abs(d) > maxAbsDelta) maxAbsDelta = Math.abs(d);
+      if (shared) {
+        const s = gridStats(or, oc);
+        return Object.assign(shell, {
+          partialOverlap: true,
+          deltaMatrix: s.deltaMatrix,
+          changedCells: s.changedCells,
+          minDelta: s.minDelta, maxDelta: s.maxDelta,
+          maxAbsDelta: s.maxAbsDelta, meanAbsDelta: s.meanAbsDelta
+        });
+      }
+      // axes differ: counts only, no delta numbers (overlap cells are not comparable)
+      let changed = 0;
+      for (let r = 0; r < or; r++) {
+        for (let c = 0; c < oc; c++) {
+          const x = base.matrix[r][c], y = comp.matrix[r][c];
+          if (Number.isNaN(x) && Number.isNaN(y)) continue;
+          if (x !== y) changed++;
         }
       }
-      deltaMatrix.push(row);
+      return Object.assign(shell, {
+        partialOverlap: false,
+        deltaMatrix: null,
+        changedCells: changed,
+        minDelta: null, maxDelta: null, maxAbsDelta: null, meanAbsDelta: null
+      });
     }
+    const s = gridStats(base.rows, base.cols);
     const axisDelta = (u, v) => u.map((x, i) => x - v[i]);
     return {
       sameSize: true,
-      deltaMatrix,
-      changedCells,
-      maxAbsDelta,
+      partialOverlap: false,
+      deltaMatrix: s.deltaMatrix,
+      changedCells: s.changedCells,
+      totalCells: base.rows * base.cols,
+      minDelta: s.minDelta, maxDelta: s.maxDelta,
+      maxAbsDelta: s.maxAbsDelta,
+      meanAbsDelta: s.meanAbsDelta,
+      dimsBase: [base.rows, base.cols],
+      dimsComp: [comp.rows, comp.cols],
       xDelta: axisDelta(base.xAxes, comp.xAxes),
       yDelta: axisDelta(base.yAxes, comp.yAxes)
     };
+  }
+
+  /**
+   * Flat per-table summary for the tables-first view: one row per table
+   * path present in EITHER map (matched by path.join('/')).
+   * Row: { path, name, status, dimsBase, dimsComp, changedCells, totalCells,
+   *        minDelta, maxDelta, maxAbsDelta, meanAbsDelta, diff }
+   * status: 'changed' | 'resized' | 'only-in-base' | 'only-in-comp' | 'equal'.
+   * When compTables is null/undefined (single-file mode) every row is
+   * 'equal' with no diff stats. Default sort is status-aware: changed (0)
+   * first, then resized (1), then only-in-base/only-in-comp (2), then equal
+   * (3); within a status, changedCells desc, tiebreak maxAbsDelta desc.
+   * If two tables collide on the same joined path, the later one is keyed
+   * 'path #2' (then ' #3', …) instead of silently dropping the first, and a
+   * console.warn is emitted.
+   */
+  function summarizeTables(baseTables, compTables) {
+    function indexByPath(arr) {
+      const m = new Map();
+      for (const t of asArray(arr)) {
+        let pk = t.path.join('/');
+        if (m.has(pk)) {
+          let n = 2;
+          while (m.has(pk + ' #' + n)) n++;
+          console.warn('summarizeTables: duplicate table path "' + pk +
+            '" — second occurrence keyed as "' + pk + ' #' + n + '"');
+          pk += ' #' + n;
+        }
+        m.set(pk, t);
+      }
+      return m;
+    }
+    const bm = indexByPath(baseTables);
+    const cm = compTables == null ? null : indexByPath(compTables);
+    const paths = [];
+    const seen = new Set();
+    for (const m of [bm, cm]) {
+      if (!m) continue;
+      for (const p of m.keys()) if (!seen.has(p)) { seen.add(p); paths.push(p); }
+    }
+    const rows = paths.map(pk => {
+      const b = bm.get(pk), c = cm ? cm.get(pk) : null;
+      const row = {
+        path: pk,
+        name: (b || c).name,
+        status: 'equal',
+        dimsBase: b ? [b.rows, b.cols] : null,
+        dimsComp: c ? [c.rows, c.cols] : null,
+        changedCells: null, totalCells: null,
+        minDelta: null, maxDelta: null, maxAbsDelta: null, meanAbsDelta: null,
+        diff: null
+      };
+      if (b && c) {
+        const d = diffTable(b, c);
+        row.diff = d;
+        row.changedCells = d.changedCells;
+        row.totalCells = d.totalCells;
+        row.minDelta = d.minDelta;
+        row.maxDelta = d.maxDelta;
+        row.maxAbsDelta = d.maxAbsDelta;
+        row.meanAbsDelta = d.meanAbsDelta;
+        row.status = d.sameSize ? (d.changedCells > 0 ? 'changed' : 'equal') : 'resized';
+      } else if (cm) {
+        row.status = b ? 'only-in-base' : 'only-in-comp';
+      }
+      return row;
+    });
+    const STATUS_RANK = { changed: 0, resized: 1, 'only-in-base': 2, 'only-in-comp': 2, equal: 3 };
+    rows.sort((x, y) => {
+      const rx = STATUS_RANK[x.status] === undefined ? 4 : STATUS_RANK[x.status];
+      const ry = STATUS_RANK[y.status] === undefined ? 4 : STATUS_RANK[y.status];
+      if (rx !== ry) return rx - ry;
+      const a = x.changedCells === null ? -1 : x.changedCells;
+      const b = y.changedCells === null ? -1 : y.changedCells;
+      if (a !== b) return b - a;
+      const ax = x.maxAbsDelta === null ? -1 : x.maxAbsDelta;
+      const ay = y.maxAbsDelta === null ? -1 : y.maxAbsDelta;
+      return ay - ax;
+    });
+    return rows;
   }
 
   return {
@@ -498,6 +678,6 @@
     parseXml, parseFtm,
     extractTables,
     diffTrees, countChanges,
-    diffTable
+    diffTable, summarizeTables
   };
 }));

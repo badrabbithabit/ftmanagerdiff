@@ -3,7 +3,8 @@
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 
-const suites = ['core.test.js', path.join('qa', 'qa.test.js'), path.join('qa', 'real-samples.test.js')];
+const suites = ['core.test.js', path.join('qa', 'qa.test.js'), path.join('qa', 'real-samples.test.js'),
+  path.join('qa', 'table-view.test.js')];
 
 let failed = 0;
 for (const s of suites) {

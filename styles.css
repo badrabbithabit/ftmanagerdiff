@@ -55,6 +55,18 @@ body {
 }
 .onlydiff { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 .onlydiff input { accent-color: var(--accent); width: 15px; height: 15px; }
+.viewtoggle { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.vbtn {
+  background: var(--bg3); color: var(--dim); border: none; padding: 4px 14px;
+  cursor: pointer; font: inherit; font-size: 13px;
+}
+.vbtn + .vbtn { border-left: 1px solid var(--line); }
+.vbtn.active { background: #22344a; color: var(--fg); }
+.search {
+  background: var(--bg3); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 9px; font: inherit; font-size: 13px; width: 240px;
+}
+.search:focus { outline: none; border-color: var(--accent); }
 .hint { margin-left: auto; color: var(--dim); font-size: 12px; }
 .btn {
   background: var(--bg3); color: var(--fg); border: 1px solid var(--line);
@@ -65,6 +77,25 @@ body {
 
 .main { flex: 1; display: flex; min-height: 0; }
 .tree { flex: 1; overflow: auto; padding: 10px 16px 30px; font-family: var(--mono); font-size: 13px; }
+.tables { flex: 1; overflow: auto; padding: 10px 16px 30px; }
+
+table.tview { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12.5px; }
+table.tview th, table.tview td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: right; white-space: nowrap; }
+table.tview th { position: sticky; top: 0; background: var(--bg2); color: var(--dim); font-weight: 600; z-index: 1; }
+table.tview th.sortable { cursor: pointer; user-select: none; }
+table.tview th.sortable:hover { color: var(--fg); }
+table.tview th.sorted { color: var(--accent); }
+table.tview th:nth-child(1), table.tview td:nth-child(1) { text-align: left; }
+table.tview td.tname { max-width: 340px; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+table.tview tbody tr { cursor: pointer; }
+table.tview tbody tr:hover { background: var(--bg3); }
+table.tview tbody tr.selected { background: #22344a; outline: 1px solid #2f5478; }
+table.tview td.tdims, table.tview td.tcells, table.tview td.tnum { color: var(--dim); }
+.sbadge { font-size: 11px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim); }
+.sbadge.s-changed { color: #f0b8b8; border-color: #6b2a2a; }
+.sbadge.s-resized { background: #4a2f18; color: var(--missing); border-color: #6b4520; }
+.sbadge.s-only-in-base, .sbadge.s-only-in-comp { background: #3a2a15; color: var(--missing); border-color: #6b4520; }
+.sbadge.s-equal { color: var(--equal); }
 .tree ul { list-style: none; margin: 0; padding-left: 16px; }
 .tree > ul { padding-left: 0; }
 .tree li { margin: 1px 0; }

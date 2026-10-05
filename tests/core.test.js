@@ -187,6 +187,201 @@ async function main() {
     assert.ok(Number.isNaN(same.deltaMatrix[3][7]), 'NaN vs NaN stays NaN, not counted');
   });
 
+  await t('table diff stats: full shape, independently recomputed from deltaMatrix', async () => {
+    const a = await C.parseFtm(read('tuneA.ftm'));
+    const b = await C.parseFtm(read('tuneB.ftm'));
+    const ta = C.extractTables(a.tree), tb = C.extractTables(b.tree);
+    const find = (arr, n) => arr.find(t => t.name === n);
+    const d = C.diffTable(find(ta, 'Injector_Pulse'), find(tb, 'Injector_Pulse'));
+    assert.strictEqual(d.sameSize, true);
+    assert.deepStrictEqual(d.dimsBase, [11, 14]);
+    assert.deepStrictEqual(d.dimsComp, [11, 14]);
+    assert.strictEqual(d.totalCells, 154);
+    // independent recomputation from the base/comp matrices
+    const A = find(ta, 'Injector_Pulse').matrix, B = find(tb, 'Injector_Pulse').matrix;
+    let min = Infinity, max = -Infinity, maxAbs = 0, sumAbs = 0, n = 0, nanChanged = 0;
+    for (let r = 0; r < 11; r++) for (let c = 0; c < 14; c++) {
+      const x = A[r][c], y = B[r][c];
+      if (Number.isNaN(x) && Number.isNaN(y)) continue; // NaN vs NaN: not changed
+      const v = x - y;
+      if (Number.isNaN(v)) { nanChanged++; continue; }  // NaN vs value: changed, no number
+      if (v === 0) continue;
+      if (v < min) min = v;
+      if (v > max) max = v;
+      if (Math.abs(v) > maxAbs) maxAbs = Math.abs(v);
+      sumAbs += Math.abs(v); n++;
+    }
+    assert.ok(nanChanged > 0, 'fixture must contain NaN-vs-value cells');
+    assert.strictEqual(d.minDelta, min);
+    assert.strictEqual(d.maxDelta, max);
+    assert.strictEqual(d.maxAbsDelta, maxAbs);
+    assert.ok(Math.abs(d.meanAbsDelta - sumAbs / n) < 1e-12, 'mean over changed cells only');
+    // NaN cells: counted as changed, excluded from the numeric stats
+    assert.strictEqual(d.changedCells, n + nanChanged, 'NaN-vs-value counts as changed');
+    // equal table: zeroed stats, no NaN contamination
+    const eq = C.diffTable(find(ta, 'Injector_Pulse'), find(ta, 'Injector_Pulse'));
+    assert.strictEqual(eq.minDelta, 0);
+    assert.strictEqual(eq.maxDelta, 0);
+    assert.strictEqual(eq.meanAbsDelta, 0);
+    assert.strictEqual(eq.maxAbsDelta, 0);
+    assert.strictEqual(eq.totalCells, 154);
+  });
+
+  await t('table diff stats: dim mismatch + matching overlap axes -> overlap delta stats', async () => {
+    const a = await C.parseFtm(read('tuneA.ftm'));
+    const b = await C.parseFtm(read('tuneB.ftm'));
+    const ta = C.extractTables(a.tree), tb = C.extractTables(b.tree);
+    const find = (arr, n) => arr.find(t => t.name === n);
+    const d = C.diffTable(find(ta, 'Lambda_1'), find(tb, 'Lambda_1')); // 1x15 vs 1x17, first 15 axes equal
+    assert.strictEqual(d.sameSize, false);
+    assert.deepStrictEqual(d.dimsBase, [1, 15]);
+    assert.deepStrictEqual(d.dimsComp, [1, 17]);
+    assert.deepStrictEqual(d.baseSize, [1, 15]);   // backward compat
+    assert.deepStrictEqual(d.compSize, [1, 17]);
+    // overlap axes match -> conditional overlap delta stats are reported
+    assert.strictEqual(d.partialOverlap, true);
+    const A = find(ta, 'Lambda_1').matrix, B = find(tb, 'Lambda_1').matrix;
+    let changed = 0, min = Infinity, max = -Infinity, maxAbs = 0, sumAbs = 0, fin = 0;
+    for (let r = 0; r < 1; r++) for (let c = 0; c < 15; c++) {
+      const x = A[r][c], y = B[r][c];
+      if (Number.isNaN(x) && Number.isNaN(y)) continue;
+      if (x !== y) {
+        changed++;
+        const dd = x - y;
+        if (Number.isFinite(dd)) {
+          if (dd < min) min = dd; if (dd > max) max = dd;
+          if (Math.abs(dd) > maxAbs) maxAbs = Math.abs(dd);
+          sumAbs += Math.abs(dd); fin++;
+        }
+      }
+    }
+    assert.ok(changed > 0);
+    assert.strictEqual(d.totalCells, 15);
+    assert.strictEqual(d.changedCells, changed);
+    assert.ok(Array.isArray(d.deltaMatrix) && d.deltaMatrix.length === 1 && d.deltaMatrix[0].length === 15,
+      'deltaMatrix covers the overlap subgrid');
+    assert.ok(Math.abs(d.minDelta - min) < 1e-12 && Math.abs(d.maxDelta - max) < 1e-12);
+    assert.ok(Math.abs(d.maxAbsDelta - maxAbs) < 1e-12);
+    assert.ok(Math.abs(d.meanAbsDelta - sumAbs / fin) < 1e-12);
+  });
+
+  await t('table diff stats: dim mismatch + differing overlap axes -> counts only, null deltas', () => {
+    const mk = (name, xs, ys, m) => ({
+      path: [name], name, xAxes: xs, yAxes: ys, rows: m.length, cols: m[0].length, matrix: m
+    });
+    const A = mk('T', [0, 10, 20, 30], [0], [[1, 2, 3, 4]]);
+    const B = mk('T', [0, 11, 20, 30, 40, 50], [0], [[1, 9, 3, 4, 5, 6]]); // xAxes[1] differs
+    const d = C.diffTable(A, B);
+    assert.strictEqual(d.sameSize, false);
+    assert.strictEqual(d.partialOverlap, false, 'axes differ -> no overlap stats');
+    assert.strictEqual(d.totalCells, 4);
+    assert.strictEqual(d.changedCells, 1);
+    assert.strictEqual(d.deltaMatrix, null);
+    assert.strictEqual(d.minDelta, null);
+    assert.strictEqual(d.maxDelta, null);
+    assert.strictEqual(d.maxAbsDelta, null);
+    assert.strictEqual(d.meanAbsDelta, null);
+  });
+
+  await t('table diff stats: NaN-vs-value-only changes -> null deltas, not 0', () => {
+    const mk = (name, xs, ys, m) => ({
+      path: [name], name, xAxes: xs, yAxes: ys, rows: m.length, cols: m[0].length, matrix: m
+    });
+    const A = mk('T', [0, 10], [0, 1], [[1, NaN], [2, 3]]);
+    const B = mk('T', [0, 10], [0, 1], [[1, 5], [2, 3]]); // one NaN-vs-value cell only
+    const d = C.diffTable(A, B);
+    assert.strictEqual(d.sameSize, true);
+    assert.strictEqual(d.changedCells, 1);
+    assert.ok(Number.isNaN(d.deltaMatrix[0][1]), 'NaN delta kept in the matrix');
+    assert.strictEqual(d.minDelta, null);
+    assert.strictEqual(d.maxDelta, null);
+    assert.strictEqual(d.maxAbsDelta, null);
+    assert.strictEqual(d.meanAbsDelta, null);
+    // fully-equal grid still reports zeros (unchanged behaviour)
+    const e = C.diffTable(A, A);
+    assert.strictEqual(e.changedCells, 0);
+    assert.strictEqual(e.minDelta, 0);
+    assert.strictEqual(e.maxAbsDelta, 0);
+    assert.strictEqual(e.meanAbsDelta, 0);
+  });
+
+  await t('summarizeTables: status-aware default sort (changed < resized), maxAbsDelta tiebreak', () => {
+    const mk = (name, xs, ys, m) => ({
+      path: [name], name, xAxes: xs, yAxes: ys, rows: m.length, cols: m[0].length, matrix: m
+    });
+    // changed X: 1 changed cell, maxAbs 5; changed Z: 1 changed cell, maxAbs 2 (tie on cells)
+    const Xa = mk('X', [0, 1], [0, 1], [[1, 2], [3, 4]]), Xb = mk('X', [0, 1], [0, 1], [[6, 2], [3, 4]]);
+    const Za = mk('Z', [0, 1], [0, 1], [[1, 2], [3, 4]]), Zb = mk('Z', [0, 1], [0, 1], [[3, 2], [3, 4]]);
+    // resized Y: 4 changed overlap cells (more than X/Z) but must sort AFTER them
+    const Ya = mk('Y', [0, 1, 2, 3], [0], [[1, 2, 3, 4]]);
+    const Yb = mk('Y', [0, 1, 2, 3, 4, 5], [0], [[9, 9, 9, 9, 9, 9]]);
+    const rows = C.summarizeTables([Za, Ya, Xa], [Zb, Yb, Xb]);
+    assert.deepStrictEqual(rows.map(r => r.path), ['X', 'Z', 'Y'],
+      'changed rows first (maxAbsDelta tiebreak 5>2), resized after, despite more changed cells');
+    assert.strictEqual(rows[0].status, 'changed');
+    assert.strictEqual(rows[1].status, 'changed');
+    assert.strictEqual(rows[2].status, 'resized');
+    assert.strictEqual(rows[0].maxAbsDelta, 5);
+    assert.strictEqual(rows[1].maxAbsDelta, 2);
+    assert.strictEqual(rows[2].changedCells, 4, 'resized overlap counts still reported');
+    assert.strictEqual(rows[2].partialOverlap, undefined, 'row shape unchanged');
+    assert.strictEqual(rows[2].diff.partialOverlap, true);
+  });
+
+  await t('summarizeTables: path collision -> " #2" suffix + console.warn, no silent drop', () => {
+    const mk = (name, v) => ({
+      path: ['Dup'], name, xAxes: [0, 1], yAxes: [0], rows: 1, cols: 2, matrix: [[v, v + 1]]
+    });
+    const warns = [];
+    const origWarn = console.warn;
+    console.warn = m => warns.push(String(m));
+    try {
+      const rows = C.summarizeTables([mk('Dup', 1), mk('Dup', 10)], null);
+      console.warn = origWarn;
+      assert.strictEqual(rows.length, 2, 'both colliding tables kept');
+      assert.deepStrictEqual(rows.map(r => r.path), ['Dup', 'Dup #2']);
+      assert.ok(warns.some(w => w.includes('Dup #2')), 'console.warn mentions the new key');
+    } finally { console.warn = origWarn; }
+  });
+
+
+  await t('summarizeTables: statuses, path union, default sort, single-file mode', async () => {
+    const a = await C.parseFtm(read('tuneA.ftm'));
+    const b = await C.parseFtm(read('tuneB.ftm'));
+    const ta = C.extractTables(a.tree), tb = C.extractTables(b.tree);
+    const rows = C.summarizeTables(ta, tb);
+    const byPath = new Map(rows.map(r => [r.path, r]));
+    assert.strictEqual(rows.length, 4, 'union of 3+3 tables sharing 2 paths');
+    assert.strictEqual(byPath.get('Ignition_Advance').status, 'only-in-base');
+    assert.strictEqual(byPath.get('Ignition_Advance').dimsComp, null);
+    assert.strictEqual(byPath.get('VVT_Advance').status, 'only-in-comp');
+    assert.strictEqual(byPath.get('VVT_Advance').dimsBase, null);
+    assert.strictEqual(byPath.get('Lambda_1').status, 'resized');
+    assert.strictEqual(byPath.get('Injector_Pulse').status, 'changed');
+    assert.ok(byPath.get('Injector_Pulse').changedCells > 0);
+    assert.ok(byPath.get('Injector_Pulse').diff.sameSize, 'diff object carried on the row');
+    // default sort: status rank (changed < resized < only-in-* < equal),
+    // within a status changedCells desc (null counts sort last in status)
+    const RANK = { changed: 0, resized: 1, 'only-in-base': 2, 'only-in-comp': 2, equal: 3 };
+    for (let i = 1; i < rows.length; i++) {
+      assert.ok(RANK[rows[i - 1].status] <= RANK[rows[i].status], 'status order at ' + i);
+      if (rows[i - 1].status === rows[i].status) {
+        const p = rows[i - 1].changedCells, q = rows[i].changedCells;
+        assert.ok((p === null ? -1 : p) >= (q === null ? -1 : q), 'cells order at ' + i);
+      }
+    }
+    assert.strictEqual(rows[rows.length - 1].status, 'only-in-comp', 'uncounted rows sort last');
+    // single-file mode: everything equal, no stats
+    const solo = C.summarizeTables(ta, null);
+    assert.strictEqual(solo.length, 3);
+    solo.forEach(r => {
+      assert.strictEqual(r.status, 'equal');
+      assert.strictEqual(r.diff, null);
+      assert.strictEqual(r.changedCells, null);
+      assert.ok(r.dimsBase);
+    });
+  });
+
   await t('lock flag: detected but contents preserved; missing SecurityConfig = unlocked', async () => {
     const l = await C.parseFtm(read('tuneLocked.ftm'));
     assert.strictEqual(l.locked, true);
