@@ -24,7 +24,10 @@ TuneCompare.com is dead.
 ## Phase 2 — Format acquisition
 - [x] 2a. Deobfuscated TuneCompare JS → research/tunecompare_deobfuscated.js,
       research/tunecompare_strings.txt, research/tunecompare_analysis.md.
-- [ ] 2b. Get sample FT550 .ftm files from user for validation. CHECKPOINT: ask user.
+- [x] 2b. Samples: 13 official FuelTech example maps downloaded
+      (fueltech.com.br/pages/mapas-de-exemplo → cdn.shopify direct links)
+      into samples/ — incl. 2 genuine FT550-class maps. User's own ECU maps
+      still welcome as extra QC but no longer blocking.
 - [x] 2c. Format recovered from code:
       * .ftm byte 0 = deflate stream (zlib 0x78.. or gzip 0x1f8b, no magic/header).
       * Inflated payload = **XML**, root element `<Adjust>` (NOT JSON).
@@ -38,13 +41,6 @@ TuneCompare.com is dead.
       * Diff: recursive by key name; numeric tolerance 0.001; table diff =
         positional base−comp only if dims match; rainbow cell coloring.
       * 100% client-side, zero network calls.
-
-## Phase 2 — Format acquisition
-- [ ] 2a. Get sample FT550 tune files from user (2+ files, ideally same setup
-      with known differences). CHECKPOINT: ask user.
-- [ ] 2b. Determine format empirically (hexdump, entropy, strings).
-- [ ] 2c. Map fields: table names (fuel tables, ignition, VVT, launch, etc.),
-      axes, cell values, metadata.
 
 ## Phase 3 — Build
 - [x] 3a. Core lib src/ftm-core.js (UMD, browser+node): inflate (gzip/zlib/raw
@@ -62,8 +58,15 @@ TuneCompare.com is dead.
 - [x] 4b. Reviewer pass found+fixed: UI missing-left/right swap, backwards doc
       comment, codepoint-bomb crash, 0x78 raw-deflate misdetect, same-name
       sibling table path collision.
-- [ ] 4c. Validate on REAL .ftm files (user samples) — the only remaining gap.
-      Also eyeball the UI in a real browser (open index.html).
+- [x] 4c. Validated on REAL maps: 13 official FuelTech example maps in
+      samples/ (2 FT550-class, FT500/600/450; from fueltech.com.br
+      'mapas-de-exemplo', cdn.shopify direct links). 11/11 parse (370 tables,
+      correct ProductID/SW/fileInfo); 2 encrypted/protected maps (.ftm with
+      non-deflate magic 39fa/4d23) rejected gracefully. Self-diff invariant
+      = 0 changes for all 11. Pair diffs hand-checked vs raw XML (24 cells,
+      all match); dim-mismatch fires (95/55 cases). tests/qa/real-samples.test.js
+      (10) wired into run-all → 30 tests, 3 suites, all green.
+- [ ] 4d. Eyeball the UI in a real browser with the samples (user).
 
 ## Decisions log
 - Local single-page web app (TuneCompare replacement UX), dependency-free,
@@ -73,8 +76,20 @@ TuneCompare.com is dead.
   cells matched by Key not position; raw-deflate accepted as fallback.
 
 ## Findings log
+- Full format writeup now lives in **docs/FORMAT.md** (single source of truth).
+- 2026-10-05: **Two .ftm container flavors**: open (gzip/zlib XML at byte 0) and
+  **encrypted** (observed on 2 official PnP maps: magic 39fa/4d23, entropy
+  7.998, incompressible, per-file keys). Encrypted = FuelTech's commercial
+  plug-and-play calibrations (IP protection); we reject them by design,
+  do not attempt cracking (license/DMCA). Soft lock (Tuner_Enabled) is a
+  separate, in-XML honor-system tier.
+- 2026-10-05: Real-map stats: v5.x maps ≈ 370 tables + 22 scalars; v4.71 map
+  had 261 (cross-version diffs produce many structural changes + resized
+  tables — expected). Axis keys can be negative/fractional; empty 0×0 tables
+  exist (Func_EtcSlewControl_Table); <SERIAL> is a base64 ECU-binding blob.
 - 2026-10-05: No existing tool found (research subagent). .ftm extension confirmed
-  by TuneCompare copy + filext.com. .ftm ≈ deflate-compressed JSON [inferred].
+  by TuneCompare copy + filext.com. (Initial "compressed JSON" guess was wrong —
+  it is compressed XML; corrected in Phase 2c.)
 - 2026-10-05: http://tunecompare.com still serves the full app (HTTP only,
   expired cert). Archived assets: research/tunecompare_live.html,
   tunecompare_script_0.js (main obfuscated script), styles.css, privacy.html.

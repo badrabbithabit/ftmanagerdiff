@@ -105,6 +105,13 @@
           : zlib.inflateRawSync(buf);
         return Promise.resolve(decodeText(out));
       } catch (e) {
+        if (kind === 'raw') {
+          // No gzip/zlib magic AND not a raw-deflate stream either: real
+          // FuelTech protected/encrypted maps look exactly like this (e.g.
+          // files starting 39 fa / 4d 23). Give a clear, non-scary message.
+          return Promise.reject(new Error('unrecognized container \u2014 possibly an encrypted/protected map '
+            + '(no gzip/zlib header and not a raw-deflate stream)'));
+        }
         return Promise.reject(new Error('inflate failed (' + kind + '): ' + e.message));
       }
     }
@@ -112,7 +119,13 @@
     if (typeof DecompressionStream === 'function' && typeof Response !== 'undefined') {
       const label = kind === 'gzip' ? 'gzip' : kind === 'zlib' ? 'deflate' : 'deflate-raw';
       return new Response(new Blob([buf]).stream()
-        .pipeThrough(new DecompressionStream(label))).text();
+        .pipeThrough(new DecompressionStream(label))).text()
+        .catch(e => {
+          if (kind === 'raw')
+            throw new Error('unrecognized container \u2014 possibly an encrypted/protected map '
+              + '(no gzip/zlib header and not a raw-deflate stream)');
+          throw new Error('inflate failed (' + kind + '): ' + (e && e.message));
+        });
     }
     return Promise.reject(new Error('no inflate backend available'));
   }
@@ -273,6 +286,8 @@
    * ------------------------------------------------------------------ */
 
   function doubles(node) {
+    // missing or self-closing/empty axis element (<Linhas/>, <Colunas/>) -> no axis values
+    if (node == null || node === '') return [];
     return asArray(isPlainObject(node) ? node.double : node).map(v => {
       const n = toNum(v);
       return n === null ? NaN : n;

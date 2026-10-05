@@ -6,3 +6,7 @@ _research/
 node_modules/
 *.log
 .DS_Store
+
+# Official FuelTech example maps (QC samples) — download from
+# https://www.fueltech.com.br/pages/mapas-de-exemplo ; not redistributed here.
+samples/
