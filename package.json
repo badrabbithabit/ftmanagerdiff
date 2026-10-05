@@ -1,0 +1,10 @@
+{
+  "name": "ftmanagerdiff",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline, zero-dependency diff for FuelTech FT Manager (.ftm) tune files.",
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "fixtures": "node tools/make-fixtures.js"
+  }
+}

@@ -1,0 +1,8 @@
+# Research scratch: 39 MB of third-party downloads (FuelTech manuals/PDFs,
+# archived TuneCompare.com pages, deobfuscation experiments, node_modules).
+# Kept locally only — not redistributed here.
+research/
+_research/
+node_modules/
+*.log
+.DS_Store

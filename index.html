@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FTM Tune Compare — offline .ftm diff</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">FTM <span>Tune Compare</span></div>
+  <div class="summary" id="summary">Load a Base map to start</div>
+</header>
+
+<section class="slots">
+  <div class="slot" id="slotBase" tabindex="0" role="button" aria-label="Load base map">
+    <div class="slot-head"><span class="slot-title">Base map</span><span class="badge" id="baseBadge"></span></div>
+    <div class="slot-file" id="baseFile">Drop a .ftm here, or click to browse</div>
+    <div class="slot-meta" id="baseMeta"></div>
+    <input type="file" id="baseInput" accept=".ftm" hidden>
+  </div>
+  <div class="slot" id="slotComp" tabindex="0" role="button" aria-label="Load compare map">
+    <div class="slot-head"><span class="slot-title">Compare map</span><span class="badge" id="compBadge"></span></div>
+    <div class="slot-file" id="compFile">Drop a .ftm here, or click to browse</div>
+    <div class="slot-meta" id="compMeta"></div>
+    <input type="file" id="compInput" accept=".ftm" hidden>
+  </div>
+</section>
+
+<div class="banner" id="banner" hidden></div>
+
+<div class="toolbar">
+  <label class="onlydiff"><input type="checkbox" id="onlyDiff" checked> Only show differences</label>
+  <button class="btn" id="clearBtn">Clear</button>
+  <span class="hint">100% local &middot; files never leave this machine</span>
+</div>
+
+<main class="main">
+  <div class="tree" id="tree"></div>
+  <aside class="panel" id="panel" hidden>
+    <div class="panel-head">
+      <div class="panel-title" id="panelTitle"></div>
+      <button class="btn x" id="panelClose" title="Close">&times;</button>
+    </div>
+    <div class="scalar" id="scalarInfo" hidden></div>
+    <div class="tabs" id="tabs" hidden>
+      <button class="tab active" data-tab="base">Base</button>
+      <button class="tab" data-tab="comp">Compare</button>
+      <button class="tab" data-tab="diff">Difference</button>
+    </div>
+    <div class="panel-body" id="panelBody"></div>
+  </aside>
+</main>
+
+<script src="src/ftm-core.js"></script>
+<script src="src/ui.js"></script>
+</body>
+</html>
