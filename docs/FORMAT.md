@@ -41,6 +41,27 @@ aligned — plus an identical 36-byte suffix; sizes differ by exactly 16 B;
 no repeated 16-B blocks ⇒ not ECB; entropy 8.0). No public changelog or
 announcement of this change exists; no open-format export option is known.
 
+### FTManager 5.6 container — recovered (local-only support)
+
+Fully reverse-engineered from FTManager 5.60 (see `research/ftm560/REVERSE.md`
+for the decompiled evidence):
+
+```
+[0 .. len-36-size)     AES-256-CBC/PKCS7 ciphertext → gzip(<Adjust> XML)
+                       key = SHA256(ID1), iv = "kE1(iH1#fD2@bB2+"
+[len-36 .. len-20)     ID1 = 2f6ec73a908cf6aa637b95f59bcbf34e
+[len-20 .. len-4)      TestBlock (all zero = no map password)
+[len-4  .. len)        int32LE size of optional AdjustCripto block (usually 0)
+```
+
+The tool transparently decrypts these maps when `src/ftm-crypto-local.js` is
+present. **That module is gitignored on purpose**: the key is a vendor-wide
+fixed constant (the commercial PnP maps carry the same ID1), so publishing it
+would be trafficking a circumvention tool (DMCA 1201(b)). Keep the file
+private; the public repo/GitHub Pages build only contains the hook and shows
+a clear message for protected maps. Password-protected maps (non-zero
+TestBlock) are NOT supported.
+
 ## Two-tier protection inside the open flavor
 
 1. **Soft lock (in-XML):** `Adjust/SecurityConfig/SecurityFlags/Tuner_Enabled`

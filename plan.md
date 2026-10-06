@@ -96,6 +96,14 @@ TuneCompare.com is dead.
       test — re-read same map twice, compare bytes; (d) reverse-engineering
       the container is legally gray (DMCA) — user's own data, but do NOT
       publish a general decryptor.
+- [x] (d) DONE: container fully RE'd from FTManager 5.60 (AES-256-CBC, fixed
+      key=SHA256(ID1), iv 'kE1(iH1#fD2@bB2+'; see research/ftm560/REVERSE.md).
+      All 3 owner maps decrypt → gzip XML. Support wired into core+UI via
+      src/ftm-crypto-local.js which is GITIGNORED (vendor-wide fixed key also
+      unlocks commercial PnP → publishing = DMCA 1201(b) exposure). Public
+      build shows clear 'no local crypto support' message. 5 suites/47 tests
+      green incl. pure-JS AES/SHA vs node crypto cross-check + flex-vs-gas
+      real diff on decrypted maps.
 
 ## Decisions log
 - Local single-page web app (TuneCompare replacement UX), dependency-free,
