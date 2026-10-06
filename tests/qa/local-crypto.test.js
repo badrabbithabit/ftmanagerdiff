@@ -76,7 +76,7 @@ const t = async (name, fn) => {
     let checked = 0;
     for (let r0 = 0; r0 < Math.min(A.rows, B.rows); r0++)
       for (let c0 = 0; c0 < Math.min(A.cols, B.cols); c0++) {
-        const av = A.values[r0][c0], bv = B.values[r0][c0];
+        const av = A.matrix[r0][c0], bv = B.matrix[r0][c0];
         const d = top.diff ? top.diff.deltaMatrix[r0][c0] : null;
         if (av !== bv) { assert.strictEqual(d, av - bv, 'delta mismatch'); checked++; }
       }
