@@ -59,20 +59,29 @@ async function main() {
     }
   });
 
-  await t('encrypted/protected maps (39fa/4d23 magic) rejected with clear message, fast', async () => {
+  await t('encrypted/protected maps rejected with clear message, fast', async () => {
     const enc = fs.readdirSync(DIR).filter(f => {
       const b = read(f);
       return !(b[0] === 0x1f && b[1] === 0x8b) && !(b[0] === 0x78);
     });
     assert.ok(enc.length >= 2, 'expected >=2 non-compressed samples, got ' + enc.length);
     for (const f of enc) {
+      const b = read(f);
+      // Owner maps with the FTManager 5.6 ID1 trailer are handled by the
+      // optional local crypto module (local-crypto.test.js covers them).
+      const o = b.length - 36;
+      const is56 = b.length >= 56 && b.subarray(o, o + 16).toString('hex') === '2f6ec73a908cf6aa637b95f59bcbf34e';
       const t0 = Date.now();
-      let msg = null;
-      try { await parse(f); } catch (e) { msg = e.message; }
-      assert.ok(msg, f + ' must reject, not hang/return');
-      assert.ok(/protected\/?encrypted|unrecognized container/i.test(msg),
-        f + ' unclear error: ' + msg);
-      assert.ok(Date.now() - t0 < 5000, f + ' rejected too slowly');
+      let msg = null, ok = false;
+      try { await parse(f); ok = true; } catch (e) { msg = e.message; }
+      if (is56) { // may parse (local crypto present) or reject with the no-crypto message
+        if (!ok) assert.ok(/FTManager 5\.6|no local crypto|password-protected/i.test(msg), f + ' unclear: ' + msg);
+      } else {
+        assert.ok(!ok, f + ' must reject, not hang/return');
+        assert.ok(/protected\/?encrypted|unrecognized container/i.test(msg),
+          f + ' unclear error: ' + msg);
+      }
+      assert.ok(Date.now() - t0 < 5000, f + ' took too long');
     }
   });
 

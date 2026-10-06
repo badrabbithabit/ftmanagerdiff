@@ -110,6 +110,8 @@
           : zlib.inflateRawSync(buf);
         return Promise.resolve(assertXmlText(decodeText(out)));
       } catch (e) {
+        const t = tryFTM56Container(buf);
+        if (t) return t;
         if (e && e.message === PROTECTED_MSG) return Promise.reject(e);
         if (kind === 'raw') {
           // No gzip/zlib magic AND not a raw-deflate stream either: real
@@ -129,6 +131,8 @@
         .pipeThrough(new DecompressionStream(label))).text()
         .then(text => assertXmlText(text))
         .catch(e => {
+          const t = tryFTM56Container(buf);
+          if (t) return t;
           if (e && e.message === PROTECTED_MSG) throw e;
           if (kind === 'raw')
             throw new Error('this map uses FuelTech\u2019s protected/encrypted container '
@@ -149,6 +153,40 @@
     const t = String(text).replace(/^\uFEFF/, '').trimStart();
     if (t[0] !== '<') throw new Error(PROTECTED_MSG);
     return text;
+  }
+
+  /* FTManager 5.6 container support. The crypto module (src/ftm-crypto-local.js,
+   * fixed vendor key) is LOCAL-ONLY and gitignored; the public build only gets
+   * this hook. See docs/FORMAT.md + research/ftm560/REVERSE.md. */
+  function hasFTM56Trailer(buf) {
+    if (buf.length < 56) return false;
+    const id = '2f6ec73a908cf6aa637b95f59bcbf34e';
+    const o = buf.length - 36;
+    for (let i = 0; i < 16; i++)
+      if (buf[o + i] !== parseInt(id.substr(i * 2, 2), 16)) return false;
+    return true;
+  }
+  function getLocalCrypto() {
+    if (typeof FTMCryptoLocal !== 'undefined') return FTMCryptoLocal;
+    if (typeof require === 'function' && typeof module !== 'undefined' && module.exports) {
+      try { return require('./ftm-crypto-local.js'); } catch (e) { return null; }
+    }
+    return null;
+  }
+  function tryFTM56Container(buf) {
+    if (!hasFTM56Trailer(buf)) return null;
+    const L = getLocalCrypto();
+    if (!L) return Promise.reject(new Error(
+      'protected FuelTech map (FTManager 5.6 container). This build has no '
+      + 'local crypto support \u2014 see docs/FORMAT.md'));
+    let gz;
+    try { gz = L.decryptContainer(buf); }
+    catch (e) {
+      if (e && e.code === 'password-protected')
+        return Promise.reject(new Error('password-protected map \u2014 not supported'));
+      return Promise.reject(new Error('protected map: container decrypt failed: ' + (e && e.message)));
+    }
+    return inflateFtm(gz); // decrypted payload is a gzip stream -> normal pipeline
   }
 
   /* ------------------------------------------------------------------ *

@@ -2,9 +2,15 @@
 'use strict';
 const { spawnSync } = require('node:child_process');
 const path = require('node:path');
+const fs = require('node:fs');
 
 const suites = ['core.test.js', path.join('qa', 'qa.test.js'), path.join('qa', 'real-samples.test.js'),
   path.join('qa', 'table-view.test.js')];
+
+// Optional suite: needs the gitignored local crypto module (owner maps).
+if (fs.existsSync(path.join(__dirname, 'qa', 'local-crypto.test.js')) &&
+    fs.existsSync(path.join(__dirname, '..', 'src', 'ftm-crypto-local.js')))
+  suites.push(path.join('qa', 'local-crypto.test.js'));
 
 let failed = 0;
 for (const s of suites) {

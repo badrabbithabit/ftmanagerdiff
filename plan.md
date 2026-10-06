@@ -85,6 +85,18 @@ TuneCompare.com is dead.
       delta stats (16/95 in BMW pair, rest honestly '—'); new '% changed'
       sortable column + honesty tooltips. 4 suites / 42 tests green.
 
+## Phase 5.5 — FTManager 5.6 encrypted owner maps (discovered 2026-10-05)
+- [x] User's own maps (read from ECU, NO password, FTManager 5.6) are the
+      encrypted container flavor. Docs corrected (FORMAT.md), error message
+      improved, and a real bug found via these files: random bytes that
+      coincidentally raw-inflate produced an empty parse — now rejected
+      (assertXmlText + no-root guard + regression test). 43 tests green.
+- [ ] Decide path for owner maps: (a) ask FuelTech support for open-format
+      export; (b) try older FTManager (5.22/5.36) read/save; (c) determinism
+      test — re-read same map twice, compare bytes; (d) reverse-engineering
+      the container is legally gray (DMCA) — user's own data, but do NOT
+      publish a general decryptor.
+
 ## Decisions log
 - Local single-page web app (TuneCompare replacement UX), dependency-free,
   fully offline. Core is a UMD lib so node tests exercise the same code path.
