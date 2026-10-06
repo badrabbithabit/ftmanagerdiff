@@ -110,7 +110,7 @@
           : zlib.inflateRawSync(buf);
         return Promise.resolve(assertXmlText(decodeText(out)));
       } catch (e) {
-        if (e && e.message === PROTECTED_MSG) throw e;
+        if (e && e.message === PROTECTED_MSG) return Promise.reject(e);
         if (kind === 'raw') {
           // No gzip/zlib magic AND not a raw-deflate stream either: real
           // FuelTech protected/encrypted maps look exactly like this (e.g.
