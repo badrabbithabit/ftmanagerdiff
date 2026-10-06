@@ -91,6 +91,17 @@ async function main() {
     await assert.rejects(() => C.parseFtm(z));
   });
 
+  await t('garbage that happens to inflate (raw deflate of non-XML) is rejected, not parsed empty', async () => {
+    const zlib = require('zlib');
+    // Real-world case: an encrypted FTManager 5.6 map whose random bytes
+    // began with a coincidentally-valid raw-deflate header, yielding an
+    // empty tree instead of an error.
+    const raw = zlib.deflateRawSync(Buffer.from('hello world, not xml at all'));
+    await assert.rejects(() => C.parseFtm(raw), /protected\/encrypted|not XML|no XML root/i);
+    const raw2 = zlib.deflateRawSync(Buffer.from('<not-a-root')); // starts with '<' but no valid root object
+    await assert.rejects(() => C.parseFtm(raw2));
+  });
+
   /* (e) XML edge cases */
   await t('XML: self-closing, duplicate siblings, unicode names, CDATA mixed with text', () => {
     const o = C.parseXml(

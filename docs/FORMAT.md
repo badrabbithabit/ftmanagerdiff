@@ -10,7 +10,7 @@ direct `cdn.shopify.com` downloads).
 | Flavor | Magic | Content | Who uses it |
 |---|---|---|---|
 | **Open** | byte 0 = deflate stream: `1f 8b` (gzip) or `78 xx` (zlib) | compressed XML | every map you create/read with FT Manager; all free example maps |
-| **Encrypted** | per-file, no shared header (observed: `39 fa…`, `4d 23…`) | ciphertext | FuelTech's commercial **PnP (plug-and-play)** calibrations only |
+| **Encrypted** | per-file, no shared header (observed: `39 fa…`, `4d 23…`, `5f 08…`, `13 43…`) | ciphertext | FuelTech's commercial **PnP (plug-and-play)** calibrations AND — since at least FTManager **5.6** — maps read from the ECU with NO password set (observed 2026-10-05) |
 
 There is **no file header, no magic number, no checksum wrapper** in the open
 flavor — the very first byte is the start of the deflate stream.
@@ -32,7 +32,14 @@ PowerFT ECUs are protected by US Patent 11,215,158".
 
 **This tool deliberately does not attempt to decrypt them** — circumventing
 that would likely violate FuelTech's license / DMCA anti-circumvention rules.
-Maps you tune yourself or read from your own ECU are always the open flavor.
+
+**UPDATE 2026-10-05:** the "maps you read from your own ECU are always the
+open flavor" claim is now FALSE. FTManager 5.6 writes the encrypted container
+for owner maps with no password set. Forensics on three owner maps (two
+"flex" maps from the same ECU share an identical 240-byte prefix — block-
+aligned — plus an identical 36-byte suffix; sizes differ by exactly 16 B;
+no repeated 16-B blocks ⇒ not ECB; entropy 8.0). No public changelog or
+announcement of this change exists; no open-format export option is known.
 
 ## Two-tier protection inside the open flavor
 

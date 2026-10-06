@@ -99,7 +99,7 @@
 
     if (inflateBackend) {
       return Promise.resolve(inflateBackend(buf, kind)).then(r =>
-        typeof r === 'string' ? r : decodeText(r));
+        assertXmlText(typeof r === 'string' ? r : decodeText(r)));
     }
 
     const zlib = nodeZlib();
@@ -108,14 +108,16 @@
         const out = kind === 'gzip' ? zlib.gunzipSync(buf)
           : kind === 'zlib' ? zlib.inflateSync(buf)
           : zlib.inflateRawSync(buf);
-        return Promise.resolve(decodeText(out));
+        return Promise.resolve(assertXmlText(decodeText(out)));
       } catch (e) {
+        if (e && e.message === PROTECTED_MSG) throw e;
         if (kind === 'raw') {
           // No gzip/zlib magic AND not a raw-deflate stream either: real
           // FuelTech protected/encrypted maps look exactly like this (e.g.
           // files starting 39 fa / 4d 23). Give a clear, non-scary message.
-          return Promise.reject(new Error('unrecognized container \u2014 possibly an encrypted/protected map '
-            + '(no gzip/zlib header and not a raw-deflate stream)'));
+          return Promise.reject(new Error('this map uses FuelTech\u2019s protected/encrypted container '
+            + '(no gzip/zlib header). FTManager 5.6+ saves maps this way even without a password \u2014 '
+            + 'see docs/FORMAT.md; open-format export is not currently supported'));
         }
         return Promise.reject(new Error('inflate failed (' + kind + '): ' + e.message));
       }
@@ -125,14 +127,28 @@
       const label = kind === 'gzip' ? 'gzip' : kind === 'zlib' ? 'deflate' : 'deflate-raw';
       return new Response(new Blob([buf]).stream()
         .pipeThrough(new DecompressionStream(label))).text()
+        .then(text => assertXmlText(text))
         .catch(e => {
+          if (e && e.message === PROTECTED_MSG) throw e;
           if (kind === 'raw')
-            throw new Error('unrecognized container \u2014 possibly an encrypted/protected map '
-              + '(no gzip/zlib header and not a raw-deflate stream)');
+            throw new Error('this map uses FuelTech\u2019s protected/encrypted container '
+              + '(no gzip/zlib header). FTManager 5.6+ saves maps this way even without a password \u2014 '
+              + 'see docs/FORMAT.md; open-format export is not currently supported');
           throw new Error('inflate failed (' + kind + '): ' + (e && e.message));
         });
     }
     return Promise.reject(new Error('no inflate backend available'));
+  }
+
+  // Random/encrypted bytes can occasionally "inflate" into garbage (a stray
+  // valid deflate block header). Require the payload to look like XML.
+  const PROTECTED_MSG = 'this map uses FuelTech\u2019s protected/encrypted container '
+    + '(payload is not XML). FTManager 5.6+ saves maps this way even without '
+    + 'a password \u2014 see docs/FORMAT.md; open-format export is not currently supported';
+  function assertXmlText(text) {
+    const t = String(text).replace(/^\uFEFF/, '').trimStart();
+    if (t[0] !== '<') throw new Error(PROTECTED_MSG);
+    return text;
   }
 
   /* ------------------------------------------------------------------ *
@@ -267,7 +283,10 @@
     return inflateFtm(bytes).then(xml => {
       const doc = parseXml(xml);
       const rootName = Object.keys(doc)[0] || '';
-      const tree = isPlainObject(doc[rootName]) ? doc[rootName] : {};
+      if (!rootName || !isPlainObject(doc[rootName]))
+        throw new Error('payload inflated but contains no XML root element \u2014 '
+          + 'likely a protected/encrypted or corrupt map');
+      const tree = doc[rootName];
       const lockNode = getPath(tree, 'SecurityConfig/SecurityFlags/Tuner_Enabled');
       const swVersion = getPath(tree, 'SW_Version');
       const fileInfo = {};

@@ -70,7 +70,7 @@ async function main() {
       let msg = null;
       try { await parse(f); } catch (e) { msg = e.message; }
       assert.ok(msg, f + ' must reject, not hang/return');
-      assert.ok(/unrecognized container|encrypted\/protected/i.test(msg),
+      assert.ok(/protected\/?encrypted|unrecognized container/i.test(msg),
         f + ' unclear error: ' + msg);
       assert.ok(Date.now() - t0 < 5000, f + ' rejected too slowly');
     }
