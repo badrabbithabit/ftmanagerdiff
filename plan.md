@@ -99,9 +99,9 @@ TuneCompare.com is dead.
 - [x] (d) DONE: container fully RE'd from FTManager 5.60 (AES-256-CBC, fixed
       key=SHA256(ID1), iv 'kE1(iH1#fD2@bB2+'; see research/ftm560/REVERSE.md).
       All 3 owner maps decrypt → gzip XML. Support wired into core+UI via
-      src/ftm-crypto-local.js which is GITIGNORED (vendor-wide fixed key also
-      unlocks commercial PnP → publishing = DMCA 1201(b) exposure). Public
-      build shows clear 'no local crypto support' message. 5 suites/47 tests
+      src/ftm-crypto-local.js (pure JS). OWNER DECISION 2026-10: module
+      PUBLISHED (option C, risk accepted — vendor-wide fixed key; restore
+      the .gitignore rule if a takedown ever arrives). 5 suites/47 tests
       green incl. pure-JS AES/SHA vs node crypto cross-check + flex-vs-gas
       real diff on decrypted maps.
 

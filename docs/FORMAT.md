@@ -54,13 +54,11 @@ for the decompiled evidence):
 [len-4  .. len)        int32LE size of optional AdjustCripto block (usually 0)
 ```
 
-The tool transparently decrypts these maps when `src/ftm-crypto-local.js` is
-present. **That module is gitignored on purpose**: the key is a vendor-wide
-fixed constant (the commercial PnP maps carry the same ID1), so publishing it
-would be trafficking a circumvention tool (DMCA 1201(b)). Keep the file
-private; the public repo/GitHub Pages build only contains the hook and shows
-a clear message for protected maps. Password-protected maps (non-zero
-TestBlock) are NOT supported.
+The tool transparently decrypts these maps via `src/ftm-crypto-local.js`
+(pure JS SHA-256 + AES-256-CBC, zero dependencies). Owner decision (2026-10):
+this module is published as an interoperability tool — the full format
+writeup is in `research/ftm560/REVERSE.md`. Use it on your own maps.
+Password-protected maps (non-zero TestBlock) are NOT supported.
 
 ## Two-tier protection inside the open flavor
 

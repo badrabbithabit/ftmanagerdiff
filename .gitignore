@@ -11,7 +11,7 @@ node_modules/
 # https://www.fueltech.com.br/pages/mapas-de-exemplo ; not redistributed here.
 samples/
 
-# LOCAL ONLY: contains FuelTech's fixed vendor key material for the
-# FTManager 5.6 container. Publishing it = trafficking a circumvention tool
-# (DMCA 1201(b)) — it also unlocks commercial PnP maps. Never commit.
-src/ftm-crypto-local.js
+# src/ftm-crypto-local.js was gitignored while we treated the FTManager 5.6
+# container as local-only. Owner decision (2026-10): publish it as an
+# interoperability tool — the format writeup is in research/ftm560/REVERSE.md.
+# If this repo ever receives a DMCA takedown, restore the ignore rule here.
